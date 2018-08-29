@@ -9,72 +9,88 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
 import static org.junit.Assert.*;
-import org.junit.FixMethodOrder;
+
 import org.junit.Test;
-import org.junit.runners.MethodSorters;
 
 /**
  * TODO, Consider it part of the test to replace HttpURLConnection with better
  * APIs (for example Jersey-client, JSON-P etc-) to call REST-service
  */
-@FixMethodOrder(MethodSorters.NAME_ASCENDING)
+
 public class BlogTestIntegr {
 
-    private static final String POST_1 = "{\"id\":\"1\",\"title\":\"First title\",\"content\":\"First content\"}";
-    private static final String POST_2 = "{\"id\":\"2\",\"title\":\"Second title\",\"content\":\"Second content\"}";
+    private static final String POST_1 = "{\"content\":\"First content\",\"id\":\"1\",\"title\":\"First title\"}";
+    private static final String POST_2 = "{\"content\":\"Second content\",\"id\":\"2\",\"title\":\"Second title\"}";
+    private static final String INVALID_POST_1 = "{\"something\":\"blurg\"}";
     private static final String POSTS_URI = "http://localhost:8080/blog-web/posts/";
 
-    
+
     public BlogTestIntegr() {
     }
 
     @Test
-    public void test_1_BlogWithoutPosts() {
+    public void addAPost() {
+        try {
+            String location = POST(POSTS_URI, POST_1, 201);
+            assertEquals(POSTS_URI + "1", location);
+            String actualPost = GET(POSTS_URI + "1", 200);
+            assertEquals(POST_1, actualPost);
+        } finally {
+            DELETE(POSTS_URI + "1", 200);
+        }
+    }
+
+    @Test
+    public void deleteAPost() {
+        try {
+            POST(POSTS_URI, POST_1, 201);
+            String actualPost = GET(POSTS_URI + "1", 200);
+            assertEquals(POST_1, actualPost);
+        } finally {
+            DELETE(POSTS_URI + "1", 200);
+            GET(POSTS_URI + "1", 204);
+        }
+    }
+
+    @Test
+    public void getAllPosts() {
+        try {
+            POST(POSTS_URI, POST_1, 201);
+            POST(POSTS_URI, POST_2, 201);
+            String actualPosts = GET(POSTS_URI, 200);
+            assertEquals("[" + POST_1 + "," + POST_2 + "]", actualPosts);
+        } finally {
+            DELETE(POSTS_URI + "1", 200);
+            DELETE(POSTS_URI + "2", 200);
+        }
+    }
+
+    @Test
+    public void blogWithoutPosts() {
         String output = GET(POSTS_URI, 200);
         assertEquals("[]", output);
     }
 
     @Test
-    public void test_2_AddPosts() {
-        String location = POST(POSTS_URI, POST_1);
-        assertEquals(POSTS_URI + "1", location);
-
-        location = POST(POSTS_URI, POST_2);
-        assertEquals(POSTS_URI + "2", location);
+    public void addInvalidPost() {
+        try {
+            POST(POSTS_URI, INVALID_POST_1, 405);
+            GET(POSTS_URI + "1", 204);
+        } finally {
+            DELETE(POSTS_URI + "1", 404);
+        }
     }
 
     @Test
-    public void test_3_GetPost() {
-        String postJson = GET(POSTS_URI + "1", 200);
-        assertEquals(POST_1, postJson);
-
-        postJson = GET(POSTS_URI + "2", 200);
-        assertEquals(POST_2, postJson);
+    public void deleteNonexistentPost() {
+        DELETE(POSTS_URI + "1", 404);
     }
 
     @Test
-    public void test_4_GetAllPosts() {
-        String output = GET(POSTS_URI, 200);
-        assertEquals("[" + POST_1 + "," + POST_2 + "]", output);
-    }
-    
-    @Test
-    public void test_5_DeletePosts() {
-        DELETE(POSTS_URI + "1", 200);        
-        // Should now be gone
+    public void getNonexistentPost() {
         GET(POSTS_URI + "1", 204);
-
-        DELETE(POSTS_URI + "2", 200);        
-        // Should now be gone
-        GET(POSTS_URI + "2", 204);      
-
-    }
-
-    @Test
-    public void test_6_GetAllPostsShouldNowBeEmpty() {
-        String output = GET(POSTS_URI, 200);
-        assertEquals("[]", output);
     }
 
     /* Helper methods */
@@ -102,7 +118,7 @@ public class BlogTestIntegr {
         return sb.toString();
     }
 
-    private String POST(String uri, String json) {
+    private String POST(String uri, String json, int expectedHTTPCode) {
         String location = "";
         try {
             URL url = new URL(uri);
@@ -114,7 +130,7 @@ public class BlogTestIntegr {
             OutputStream os = conn.getOutputStream();
             os.write(json.getBytes());
             os.flush();
-            assertEquals(201, conn.getResponseCode());
+            assertEquals(expectedHTTPCode, conn.getResponseCode());
 
             location = conn.getHeaderField("Location");
             conn.disconnect();
